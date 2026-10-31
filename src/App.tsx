@@ -17,7 +17,23 @@ const CASE_NEOBANK_IMG = '/src/assets/images/case_study_neobank_1793364627995.jp
 const CASE_CONSORTIUM_IMG = '/src/assets/images/case_study_consortium_1793364629239.jpg';
 
 export default function App() {
-  const [viewMode, setViewMode] = useState<'landing' | 'admin'>('landing');
+  const [viewMode, setViewMode] = useState<'landing' | 'admin'>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      const path = window.location.pathname.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      if (
+        hash === '#admin' ||
+        hash === '#founder' ||
+        path.endsWith('/admin') ||
+        path.endsWith('/founder') ||
+        search.includes('admin')
+      ) {
+        return 'admin';
+      }
+    }
+    return 'landing';
+  });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
 
@@ -56,6 +72,41 @@ export default function App() {
     !!currentUser &&
     currentUser.emailVerified &&
     currentUser.email?.toLowerCase() === FOUNDER_EMAIL.toLowerCase();
+
+  useEffect(() => {
+    const syncUrlToMode = () => {
+      const hash = window.location.hash.toLowerCase();
+      const path = window.location.pathname.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      if (
+        hash === '#admin' ||
+        hash === '#founder' ||
+        path.endsWith('/admin') ||
+        path.endsWith('/founder') ||
+        search.includes('admin')
+      ) {
+        setViewMode('admin');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+    window.addEventListener('hashchange', syncUrlToMode);
+    window.addEventListener('popstate', syncUrlToMode);
+    return () => {
+      window.removeEventListener('hashchange', syncUrlToMode);
+      window.removeEventListener('popstate', syncUrlToMode);
+    };
+  }, []);
+
+  const toggleFounderPortal = () => {
+    setViewMode((prev) => {
+      const next = prev === 'admin' ? 'landing' : 'admin';
+      if (typeof window !== 'undefined') {
+        window.location.hash = next === 'admin' ? 'admin' : '';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      return next;
+    });
+  };
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
@@ -152,7 +203,7 @@ export default function App() {
             </span>
             <button
               type="button"
-              onClick={() => setViewMode(viewMode === 'admin' ? 'landing' : 'admin')}
+              onClick={toggleFounderPortal}
               className="px-3 py-1 rounded-md bg-[#FF5500] hover:bg-[#EA580C] text-white font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               {viewMode === 'admin' ? 'Return to Public Site' : 'Open Founder Console'}
@@ -656,15 +707,14 @@ export default function App() {
 
             <span>© {new Date().getFullYear()} VanguardRail Inc.</span>
 
-            {/* Discreet Founder-Only Lock Trigger */}
+            {/* Founder-Only Portal Trigger (Protected by Google Auth for ajanakuayomide0@gmail.com) */}
             <button
               type="button"
-              onClick={() => setViewMode(viewMode === 'admin' ? 'landing' : 'admin')}
-              title="Founder Access"
-              aria-label="Founder Console"
-              className="text-neutral-300 dark:text-neutral-700 hover:text-[#FF5500] dark:hover:text-[#FF7A00] transition-colors cursor-pointer"
+              onClick={toggleFounderPortal}
+              className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:border-[#FF5500] text-[#0A0A0A] dark:text-neutral-200 font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Lock className="w-3.5 h-3.5" />
+              <Lock className="w-3.5 h-3.5 text-[#FF5500]" />
+              {viewMode === 'admin' ? 'Exit Founder Portal' : 'Founder Portal'}
             </button>
           </div>
         </div>

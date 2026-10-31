@@ -18,12 +18,13 @@ import {
   Trash2,
   Plus,
   LogOut,
-  ShieldCheck,
   Search,
   ExternalLink,
   Sparkles,
   FileText,
   Lock,
+  X,
+  Clock,
 } from 'lucide-react';
 import { db, auth, googleProvider, handleFirestoreError, OperationType } from '../firebase';
 
@@ -78,16 +79,16 @@ const EMAIL_TEMPLATES: Record<
   (entry?: AdminEntryRecord) => { subject: string; body: string }
 > = {
   sandbox_credentials: (entry) => ({
-    subject: `VanguardRail Sandbox API Keys & OpenAPI Spec — ${entry?.institution || 'Partner Institution'}`,
-    body: `Hello ${entry?.email || 'Fraud & Payments Team'},\n\nThank you for requesting access to the VanguardRail Real-Time APP Fraud Intervention API.\n\nAs Founder of VanguardRail, I have provisioned your dedicated shadow-scoring sandbox environment for ${entry?.institution || 'your institution'} (${entry?.scenarioName || 'Instant Payment Rail'}):\n\n• Endpoint: POST https://api.vanguardrail.io/v1/payments/score\n• SLA Target: p99 < 38ms with 60ms circuit-breaker\n• Consortium Hash Mode: Zero-PII HMAC-SHA256 Enabled\n\nReply directly to this email if you would like to schedule an architecture walkthrough.\n\nBest regards,\nFounder, VanguardRail`,
+    subject: `Follow-Up: VanguardRail Sandbox API Keys for ${entry?.institution || 'Your Team'}`,
+    body: `Hello ${entry?.email || 'Fraud & Payments Team'},\n\nThank you for submitting your API access request on VanguardRail.\n\nAs Founder of VanguardRail, I have provisioned your sandbox credentials for ${entry?.institution || 'your institution'} (${entry?.scenarioName || 'Instant Payment Rail'}):\n\n• Endpoint: POST https://api.vanguardrail.io/v1/payments/score\n• Sandbox Key: vr_live_sbx_${(entry?.id || '99281').slice(-6)}\n• SLA Target: p99 < 38ms with 60ms hard circuit-breaker\n• Consortium Mode: Zero-PII HMAC-SHA256 Velocity Graph\n\nPlease reply directly to this email with your preferred time if you would like a 15-minute live integration walkthrough.\n\nBest regards,\nFounder, VanguardRail\n${FOUNDER_EMAIL}`,
   }),
   fraud_alert_followup: (entry) => ({
-    subject: `APP Risk Assessment Summary (${entry?.decision || 'HOLD'} · Score ${entry?.riskScore ?? 88}/100) — ${entry?.institution || 'Institution'}`,
-    body: `Hello ${entry?.email || 'Risk Analyst'},\n\nHere is the summary of the payment entry overseen in the VanguardRail console:\n\n• Scenario: ${entry?.scenarioName || 'Authorized Push Payment'}\n• Amount: $${(entry?.amountUsd ?? 24500).toLocaleString()}\n• Engine Decision: ${entry?.decision || 'HOLD'} (Score: ${entry?.riskScore ?? 88}/100)\n• Notes: ${entry?.notes || 'Flagged for active call + screen-share coercion telemetry.'}\n\nBest regards,\nFounder, VanguardRail`,
+    subject: `Follow-Up: APP Risk Assessment (${entry?.decision || 'HOLD'} · ${entry?.riskScore ?? 88}/100) — ${entry?.institution || 'Institution'}`,
+    body: `Hello ${entry?.email || 'Risk Analyst'},\n\nFollowing up on the payment entry recorded for ${entry?.institution || 'your institution'}:\n\n• Scenario: ${entry?.scenarioName || 'Authorized Push Payment'}\n• Simulated Amount: $${(entry?.amountUsd ?? 24500).toLocaleString()}\n• VanguardRail Decision: ${entry?.decision || 'HOLD'} (Score: ${entry?.riskScore ?? 88}/100)\n• Summary: ${entry?.notes || 'Flagged for active call + screen-share coercion telemetry.'}\n\nLet me know if you need custom threshold tuning for your fraud operations team.\n\nBest regards,\nFounder, VanguardRail\n${FOUNDER_EMAIL}`,
   }),
   custom_message: (entry) => ({
-    subject: `Follow-up regarding ${entry?.institution || 'your VanguardRail API request'}`,
-    body: `Hello ${entry?.email || ''},\n\nReaching out personally regarding your VanguardRail API request.\n\nBest regards,\nFounder, VanguardRail`,
+    subject: `Following up on your VanguardRail API request (${entry?.institution || 'Partner'})`,
+    body: `Hello ${entry?.email || ''},\n\nI saw your API access request for ${entry?.institution || 'your organization'} and wanted to follow up personally.\n\nHow can we best support your real-time APP fraud prevention roadmap this quarter?\n\nBest regards,\nFounder, VanguardRail\n${FOUNDER_EMAIL}`,
   }),
 };
 
@@ -103,8 +104,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Compose Email State
+  // Integrated Follow-Up Email Composer State
   const [selectedEntry, setSelectedEntry] = useState<AdminEntryRecord | null>(null);
+  const [inlineFollowUpEntryId, setInlineFollowUpEntryId] = useState<string | null>(null);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
@@ -113,6 +115,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   >('sandbox_credentials');
   const [composeNotice, setComposeNotice] = useState('');
   const [composeError, setComposeError] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // New Entry Drawer State
   const [showAddEntry, setShowAddEntry] = useState(false);
@@ -133,7 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     currentUser.emailVerified &&
     currentUser.email?.toLowerCase() === FOUNDER_EMAIL.toLowerCase();
 
-  // Sync any locally queued visitor API requests into Firestore once Founder is authenticated
+  // Sync locally queued visitor API requests into Firestore once Founder is authenticated
   useEffect(() => {
     if (!isAuthReady || !currentUser || !isFounder) return;
 
@@ -239,7 +242,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleOpenComposeForEntry = (entry: AdminEntryRecord) => {
+  // Opens the inline follow-up drawer directly inside the Entries view OR in the Compose tab
+  const handlePrepareFollowUp = (entry: AdminEntryRecord, mode: 'inline' | 'tab' = 'inline') => {
     setSelectedEntry(entry);
     const defaultTpl =
       entry.entryType === 'api_access_request' ? 'sandbox_credentials' : 'fraud_alert_followup';
@@ -250,7 +254,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEmailBody(generated.body);
     setComposeNotice('');
     setComposeError('');
-    setActiveTab('compose');
+    if (mode === 'inline') {
+      setInlineFollowUpEntryId(entry.id);
+    } else {
+      setActiveTab('compose');
+    }
   };
 
   const handleTemplateChange = (
@@ -275,7 +283,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         riskScore: 14,
         decision: 'APPROVE',
         status: 'new',
-        notes: 'Requested shadow-scoring sidecar & OpenAPI 3.1 credentials for 4.2M retail accounts.',
+        notes: 'Submitted API request for 4.2M retail accounts; awaiting sandbox key follow-up.',
+        authorUid: currentUser.uid,
+      },
+      {
+        entryType: 'api_access_request',
+        email: 'vp-payments@horizonneobank.com',
+        institution: 'Horizon NeoBank US',
+        scenarioName: 'FedNow & RTP Instant Clearing',
+        amountUsd: 15000,
+        riskScore: 22,
+        decision: 'APPROVE',
+        status: 'new',
+        notes: 'Requested API access & pricing sheet for Q4 instant rail rollout.',
         authorUid: currentUser.uid,
       },
       {
@@ -300,18 +320,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         decision: 'DECLINE',
         status: 'reviewed',
         notes: 'AnyDesk framebuffer driver detected during wire initiation; 24h hold applied.',
-        authorUid: currentUser.uid,
-      },
-      {
-        entryType: 'api_access_request',
-        email: 'vp-payments@horizonneobank.com',
-        institution: 'Horizon NeoBank US',
-        scenarioName: 'FedNow & RTP Instant Clearing',
-        amountUsd: 15000,
-        riskScore: 22,
-        decision: 'APPROVE',
-        status: 'new',
-        notes: 'Evaluating outcome-based pricing tier for Q4 instant rail rollout.',
         authorUid: currentUser.uid,
       },
     ];
@@ -389,6 +397,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeleteEntry = async (entryId: string) => {
     try {
       await deleteDoc(doc(db, 'entries', entryId));
+      if (inlineFollowUpEntryId === entryId) {
+        setInlineFollowUpEntryId(null);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `entries/${entryId}`);
     }
@@ -410,6 +421,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
+    setSendingEmail(true);
     let targetEntryId = selectedEntry?.id || entries[0]?.id || '';
     try {
       if (!targetEntryId) {
@@ -450,9 +462,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         });
       }
 
-      setComposeNotice(`Email dispatched and logged to ${recipientEmail.trim()}.`);
+      setComposeNotice(`Follow-up email sent and logged to ${recipientEmail.trim()}.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'outbound_emails');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -480,7 +494,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Private Founder Console
             </h1>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed">
-              This console is strictly restricted to the Founder & Owner of VanguardRail ({FOUNDER_EMAIL}) to oversee institutional entries and respond to API requests.
+              This console is strictly restricted to the Founder & Owner of VanguardRail ({FOUNDER_EMAIL}) to oversee institutional entries and send follow-up emails to API request leads.
             </p>
           </div>
 
@@ -523,7 +537,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div>
             <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 mb-1">
               <span className="font-semibold text-[#C2410C] dark:text-[#FF7A00]">
-                Founder Command Center
+                Founder Command & Email Dispatch Center
               </span>
               <span aria-hidden="true">·</span>
               <span className="font-mono">{currentUser.email}</span>
@@ -542,7 +556,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="min-h-[42px] px-4 py-2 bg-[#FFF4ED] dark:bg-[#2A1508] hover:bg-[#FFEDD5] text-[#C2410C] dark:text-[#FF7A00] border border-[#FF5500]/30 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-[#FF5500]" />
-                {seeding ? 'Loading Samples...' : 'Load Sample Entries'}
+                {seeding ? 'Loading Samples...' : 'Load Sample API Requests'}
               </button>
             )}
 
@@ -589,7 +603,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div className="bg-white dark:bg-[#121215] rounded-xl border border-neutral-200 dark:border-neutral-800 p-5">
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              API Access Requests
+              Submitted API Requests
             </div>
             <div className="text-2xl font-extrabold font-mono tabular-nums text-[#0A0A0A] dark:text-white mt-1">
               {entries.filter((e) => e.entryType === 'api_access_request').length}
@@ -597,7 +611,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div className="bg-white dark:bg-[#121215] rounded-xl border border-neutral-200 dark:border-neutral-800 p-5">
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              Pending Replies
+              Awaiting Follow-Up Email
             </div>
             <div className="text-2xl font-extrabold font-mono tabular-nums text-[#C2410C] dark:text-[#FF7A00] mt-1">
               {entries.filter((e) => e.status === 'new').length}
@@ -605,7 +619,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div className="bg-white dark:bg-[#121215] rounded-xl border border-neutral-200 dark:border-neutral-800 p-5">
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
-              Outbound Emails Sent
+              Follow-Up Emails Sent
             </div>
             <div className="text-2xl font-extrabold font-mono tabular-nums text-[#0A0A0A] dark:text-white mt-1">
               {outboundEmails.length}
@@ -621,7 +635,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
               <h2 className="text-sm font-bold text-[#0A0A0A] dark:text-white">
-                Log New Institutional Entry
+                Log New Institutional API Request or Entry
               </h2>
               <button
                 type="button"
@@ -754,14 +768,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }`}
             >
               <Inbox className="w-3.5 h-3.5" />
-              All Entries & API Requests ({entries.length})
+              API Requests & Entries ({entries.length})
             </button>
 
             <button
               type="button"
               onClick={() => {
                 if (!recipientEmail && entries[0]) {
-                  handleOpenComposeForEntry(entries[0]);
+                  handlePrepareFollowUp(entries[0], 'tab');
                 } else {
                   setActiveTab('compose');
                 }
@@ -773,7 +787,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }`}
             >
               <Send className="w-3.5 h-3.5" />
-              Respond via Email
+              Full Email Composer
             </button>
 
             <button
@@ -786,7 +800,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              Sent Outbox ({outboundEmails.length})
+              Sent Follow-Up Outbox ({outboundEmails.length})
             </button>
           </div>
 
@@ -813,14 +827,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="min-h-[40px] px-3 py-2 text-xs font-medium bg-white dark:bg-[#121215] border border-neutral-200 dark:border-neutral-800 rounded-xl text-[#0A0A0A] dark:text-white"
               >
                 <option value="all">All Types</option>
-                <option value="api_access_request">API Access Requests</option>
+                <option value="api_access_request">Submitted API Requests</option>
                 <option value="fraud_simulation">Fraud Simulations</option>
               </select>
             </div>
           )}
         </div>
 
-        {/* TAB 1: ALL ENTRIES TABLE */}
+        {/* TAB 1: ALL ENTRIES TABLE + INTEGRATED INLINE FOLLOW-UP EMAIL COMPOSER */}
         {activeTab === 'entries' && (
           <div className="bg-white dark:bg-[#121215] rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
             {filteredEntries.length === 0 ? (
@@ -829,7 +843,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   No institutional entries recorded yet
                 </p>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
-                  Any API access request submitted on the public landing page is synced here for your review. You can also load sample entries to test email dispatch.
+                  Any API access request submitted on the public landing page is synced here automatically. Load sample requests below to test sending follow-up emails directly.
                 </p>
                 <button
                   type="button"
@@ -837,7 +851,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   disabled={seeding}
                   className="min-h-[44px] px-5 py-2.5 bg-[#FF5500] hover:bg-[#EA580C] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
                 >
-                  {seeding ? 'Loading Sample Entries...' : 'Load 4 Sample Institutional Entries'}
+                  {seeding ? 'Loading Sample Requests...' : 'Load 4 Sample API Requests'}
                 </button>
               </div>
             ) : (
@@ -845,102 +859,304 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-neutral-200 dark:border-neutral-800 bg-[#FAF8F5] dark:bg-[#18181C] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
-                      <th className="py-3.5 px-4">Contact Email & Institution</th>
-                      <th className="py-3.5 px-4">Type & Scenario</th>
-                      <th className="py-3.5 px-4 text-right">Amount</th>
-                      <th className="py-3.5 px-4 text-right">Score & Decision</th>
+                      <th className="py-3.5 px-4">Submitted Email & Institution</th>
+                      <th className="py-3.5 px-4">Request Type & Context</th>
+                      <th className="py-3.5 px-4 text-right">Follow-Ups Sent</th>
                       <th className="py-3.5 px-4">Status</th>
-                      <th className="py-3.5 px-4 text-right">Actions</th>
+                      <th className="py-3.5 px-4 text-right">Follow-Up Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800 text-xs">
-                    {filteredEntries.map((entry) => (
-                      <tr
-                        key={entry.id}
-                        className="hover:bg-[#FAF8F5]/70 dark:hover:bg-[#18181C]/60 transition-colors"
-                      >
-                        <td className="py-4 px-4 align-top">
-                          <div className="font-mono font-bold text-[#0A0A0A] dark:text-white">
-                            {entry.email}
-                          </div>
-                          <div className="text-neutral-500 dark:text-neutral-400 mt-0.5">
-                            {entry.institution}
-                          </div>
-                        </td>
-                        <td className="py-4 px-4 align-top">
-                          <div className="font-semibold text-[#C2410C] dark:text-[#FF7A00]">
-                            {entry.entryType === 'api_access_request'
-                              ? 'API Sandbox Request'
-                              : 'Fraud Simulation'}
-                          </div>
-                          <div className="text-neutral-700 dark:text-neutral-200 mt-0.5">
-                            {entry.scenarioName}
-                          </div>
-                          {entry.notes && (
-                            <div className="text-neutral-500 dark:text-neutral-400 text-[11px] mt-1 max-w-xs">
-                              {entry.notes}
-                            </div>
+                    {filteredEntries.map((entry) => {
+                      const entryEmails = outboundEmails.filter(
+                        (em) =>
+                          em.relatedEntryId === entry.id ||
+                          em.recipientEmail.toLowerCase() === entry.email.toLowerCase()
+                      );
+                      const isInlineOpen = inlineFollowUpEntryId === entry.id;
+
+                      return (
+                        <React.Fragment key={entry.id}>
+                          <tr
+                            className={`transition-colors ${
+                              isInlineOpen
+                                ? 'bg-[#FFF4ED]/60 dark:bg-[#2A1508]/40'
+                                : 'hover:bg-[#FAF8F5]/70 dark:hover:bg-[#18181C]/60'
+                            }`}
+                          >
+                            <td className="py-4 px-4 align-top">
+                              <div className="font-mono font-bold text-[#0A0A0A] dark:text-white">
+                                {entry.email}
+                              </div>
+                              <div className="text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                {entry.institution}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 align-top">
+                              <div className="font-semibold text-[#C2410C] dark:text-[#FF7A00]">
+                                {entry.entryType === 'api_access_request'
+                                  ? 'Submitted API Request'
+                                  : `Fraud Simulation (${entry.decision} · ${entry.riskScore}/100)`}
+                              </div>
+                              <div className="text-neutral-700 dark:text-neutral-200 mt-0.5">
+                                {entry.scenarioName}
+                              </div>
+                              {entry.notes && (
+                                <div className="text-neutral-500 dark:text-neutral-400 text-[11px] mt-1 max-w-sm">
+                                  {entry.notes}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-4 px-4 align-top text-right font-mono tabular-nums">
+                              {entryEmails.length > 0 ? (
+                                <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+                                  {entryEmails.length} sent
+                                </span>
+                              ) : (
+                                <span className="text-neutral-400">0 sent</span>
+                              )}
+                            </td>
+                            <td className="py-4 px-4 align-top">
+                              <select
+                                value={entry.status}
+                                onChange={(e) =>
+                                  handleStatusChange(
+                                    entry,
+                                    e.target.value as AdminEntryRecord['status']
+                                  )
+                                }
+                                className="px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#18181C] text-xs font-semibold text-[#0A0A0A] dark:text-white"
+                              >
+                                <option value="new">New</option>
+                                <option value="reviewed">Reviewed</option>
+                                <option value="replied">Replied</option>
+                                <option value="archived">Archived</option>
+                              </select>
+                            </td>
+                            <td className="py-4 px-4 align-top text-right">
+                              <div className="inline-flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    isInlineOpen
+                                      ? setInlineFollowUpEntryId(null)
+                                      : handlePrepareFollowUp(entry, 'inline')
+                                  }
+                                  className={`min-h-[36px] px-3.5 py-1.5 text-xs font-bold rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+                                    isInlineOpen
+                                      ? 'bg-[#FF5500] text-white'
+                                      : 'bg-[#0A0A0A] dark:bg-[#FF5500] hover:bg-[#FF5500] dark:hover:bg-[#EA580C] text-white'
+                                  }`}
+                                >
+                                  <Mail className="w-3.5 h-3.5" />
+                                  {isInlineOpen ? 'Close Drawer' : 'Send Follow-Up'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteEntry(entry.id)}
+                                  title="Delete Entry"
+                                  className="min-h-[36px] px-2.5 py-1.5 text-neutral-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* INTEGRATED INLINE FOLLOW-UP EMAIL COMPOSER FOR THIS ROW */}
+                          {isInlineOpen && (
+                            <tr className="bg-[#FAF8F5] dark:bg-[#18181C]">
+                              <td colSpan={5} className="p-5 sm:p-6">
+                                <div className="max-w-3xl bg-white dark:bg-[#121215] rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 sm:p-6 space-y-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-neutral-200 dark:border-neutral-800">
+                                    <div>
+                                      <div className="text-xs font-semibold text-[#C2410C] dark:text-[#FF7A00]">
+                                        Direct Follow-Up Email Composer
+                                      </div>
+                                      <h3 className="text-sm font-bold text-[#0A0A0A] dark:text-white">
+                                        Replying to {entry.email} ({entry.institution})
+                                      </h3>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTemplateChange('sandbox_credentials')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                                          templateType === 'sandbox_credentials'
+                                            ? 'bg-[#0A0A0A] dark:bg-[#FF5500] text-white'
+                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                                        }`}
+                                      >
+                                        API Keys Follow-Up
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTemplateChange('fraud_alert_followup')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                                          templateType === 'fraud_alert_followup'
+                                            ? 'bg-[#0A0A0A] dark:bg-[#FF5500] text-white'
+                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                                        }`}
+                                      >
+                                        Risk Summary
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTemplateChange('custom_message')}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
+                                          templateType === 'custom_message'
+                                            ? 'bg-[#0A0A0A] dark:bg-[#FF5500] text-white'
+                                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                                        }`}
+                                      >
+                                        Personal Note
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setInlineFollowUpEntryId(null)}
+                                        className="p-1 text-neutral-400 hover:text-[#0A0A0A] dark:hover:text-white cursor-pointer"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <form onSubmit={handleSendEmail} className="space-y-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 mb-1">
+                                          Recipient Email
+                                        </label>
+                                        <input
+                                          type="email"
+                                          required
+                                          value={recipientEmail}
+                                          onChange={(e) => setRecipientEmail(e.target.value)}
+                                          className="w-full min-h-[40px] px-3 py-2 text-xs font-mono bg-[#FAF8F5] dark:bg-[#18181C] border border-neutral-300 dark:border-neutral-700 rounded-xl text-[#0A0A0A] dark:text-white"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 mb-1">
+                                          Subject Line
+                                        </label>
+                                        <input
+                                          type="text"
+                                          required
+                                          value={emailSubject}
+                                          onChange={(e) => setEmailSubject(e.target.value)}
+                                          className="w-full min-h-[40px] px-3 py-2 text-xs bg-[#FAF8F5] dark:bg-[#18181C] border border-neutral-300 dark:border-neutral-700 rounded-xl text-[#0A0A0A] dark:text-white"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 mb-1">
+                                        Follow-Up Message Body
+                                      </label>
+                                      <textarea
+                                        rows={6}
+                                        required
+                                        value={emailBody}
+                                        onChange={(e) => setEmailBody(e.target.value)}
+                                        className="w-full p-3.5 text-xs font-mono bg-[#FAF8F5] dark:bg-[#18181C] border border-neutral-300 dark:border-neutral-700 rounded-xl text-[#0A0A0A] dark:text-white leading-relaxed"
+                                      />
+                                    </div>
+
+                                    {composeError && (
+                                      <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+                                        {composeError}
+                                      </p>
+                                    )}
+
+                                    {composeNotice && (
+                                      <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex items-center justify-between">
+                                        <span className="flex items-center gap-2 font-semibold">
+                                          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                          {composeNotice}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActiveTab('emails')}
+                                          className="underline font-bold cursor-pointer"
+                                        >
+                                          View Outbox
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                                      <button
+                                        type="submit"
+                                        disabled={sendingEmail}
+                                        className="min-h-[42px] px-5 py-2.5 bg-[#FF5500] hover:bg-[#EA580C] text-white text-xs font-bold rounded-xl inline-flex items-center gap-2 transition-colors cursor-pointer"
+                                      >
+                                        <Send className="w-3.5 h-3.5" />
+                                        {sendingEmail
+                                          ? 'Dispatching...'
+                                          : 'Send Follow-Up Email'}
+                                      </button>
+
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <a
+                                          href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                                            recipientEmail
+                                          )}&su=${encodeURIComponent(
+                                            emailSubject
+                                          )}&body=${encodeURIComponent(emailBody)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="min-h-[40px] px-3.5 py-2 bg-neutral-100 dark:bg-[#18181C] hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#0A0A0A] dark:text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 transition-colors"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                          Send via Gmail Web
+                                        </a>
+
+                                        <a
+                                          href={`mailto:${encodeURIComponent(
+                                            recipientEmail
+                                          )}?subject=${encodeURIComponent(
+                                            emailSubject
+                                          )}&body=${encodeURIComponent(emailBody)}`}
+                                          className="min-h-[40px] px-3.5 py-2 bg-neutral-100 dark:bg-[#18181C] hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#0A0A0A] dark:text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 transition-colors"
+                                        >
+                                          <Mail className="w-3.5 h-3.5" />
+                                          Mail Client
+                                        </a>
+                                      </div>
+                                    </div>
+                                  </form>
+
+                                  {/* Previous Follow-Up History for this Recipient */}
+                                  {entryEmails.length > 0 && (
+                                    <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 space-y-2">
+                                      <div className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
+                                        <Clock className="w-3.5 h-3.5 text-[#FF5500]" />
+                                        Previous Follow-Up Emails Sent to {entry.email} (
+                                        {entryEmails.length})
+                                      </div>
+                                      {entryEmails.map((prevMail) => (
+                                        <div
+                                          key={prevMail.id}
+                                          className="p-3 rounded-xl bg-[#FAF8F5] dark:bg-[#18181C] border border-neutral-200 dark:border-neutral-800 text-xs"
+                                        >
+                                          <div className="font-bold text-[#0A0A0A] dark:text-white">
+                                            {prevMail.subject}
+                                          </div>
+                                          <div className="text-neutral-500 dark:text-neutral-400 line-clamp-2 mt-0.5 font-mono text-[11px]">
+                                            {prevMail.body}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
                           )}
-                        </td>
-                        <td className="py-4 px-4 align-top text-right font-mono tabular-nums font-semibold text-[#0A0A0A] dark:text-white">
-                          ${entry.amountUsd.toLocaleString()}
-                        </td>
-                        <td className="py-4 px-4 align-top text-right font-mono tabular-nums">
-                          <span className="font-bold text-[#0A0A0A] dark:text-white">
-                            {entry.riskScore}/100
-                          </span>
-                          <span aria-hidden="true" className="mx-1.5 text-neutral-300 dark:text-neutral-700">
-                            ·
-                          </span>
-                          <span
-                            className={
-                              entry.decision === 'DECLINE' || entry.decision === 'HOLD'
-                                ? 'text-[#C2410C] dark:text-[#FF7A00] font-bold'
-                                : 'text-emerald-700 dark:text-emerald-400 font-bold'
-                            }
-                          >
-                            {entry.decision}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4 align-top">
-                          <select
-                            value={entry.status}
-                            onChange={(e) =>
-                              handleStatusChange(
-                                entry,
-                                e.target.value as AdminEntryRecord['status']
-                              )
-                            }
-                            className="px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#18181C] text-xs font-semibold text-[#0A0A0A] dark:text-white"
-                          >
-                            <option value="new">New</option>
-                            <option value="reviewed">Reviewed</option>
-                            <option value="replied">Replied</option>
-                            <option value="archived">Archived</option>
-                          </select>
-                        </td>
-                        <td className="py-4 px-4 align-top text-right">
-                          <div className="inline-flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenComposeForEntry(entry)}
-                              className="min-h-[36px] px-3 py-1.5 bg-[#0A0A0A] dark:bg-[#FF5500] hover:bg-[#FF5500] dark:hover:bg-[#EA580C] text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
-                            >
-                              <Mail className="w-3.5 h-3.5" />
-                              Respond
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEntry(entry.id)}
-                              title="Delete Entry"
-                              className="min-h-[36px] px-2.5 py-1.5 text-neutral-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -948,16 +1164,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {/* TAB 2: COMPOSE & DISPATCH EMAIL */}
+        {/* TAB 2: DEDICATED FULL EMAIL COMPOSER */}
         {activeTab === 'compose' && (
           <div className="bg-white dark:bg-[#121215] rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 max-w-3xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 mb-6 border-b border-neutral-200 dark:border-neutral-800">
               <div>
                 <h2 className="text-lg font-bold text-[#0A0A0A] dark:text-white">
-                  Respond to API Request / Dispatch Email
+                  Follow-Up Email Composer
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                  Send sandbox API credentials, fraud incident advisories, or custom messages directly from your Founder Console
+                  Select any submitted API request email below or type a recipient address to send a follow-up
                 </p>
               </div>
 
@@ -993,7 +1209,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       : 'bg-neutral-100 dark:bg-[#18181C] text-neutral-700 dark:text-neutral-300'
                   }`}
                 >
-                  Custom
+                  Custom Follow-Up
                 </button>
               </div>
             </div>
@@ -1002,20 +1218,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {entries.length > 0 && (
                 <div>
                   <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Select Recipient from Submitted Entries
+                    Select Recipient from Submitted API Requests
                   </label>
                   <select
                     value={selectedEntry?.id || ''}
                     onChange={(e) => {
                       const found = entries.find((item) => item.id === e.target.value);
-                      if (found) handleOpenComposeForEntry(found);
+                      if (found) handlePrepareFollowUp(found, 'tab');
                     }}
                     className="w-full min-h-[42px] px-3.5 py-2 text-xs bg-[#FAF8F5] dark:bg-[#18181C] border border-neutral-300 dark:border-neutral-700 rounded-xl text-[#0A0A0A] dark:text-white"
                   >
-                    <option value="">-- Select an entry or enter email manually --</option>
+                    <option value="">-- Choose a submitted email or enter manually --</option>
                     {entries.map((en) => (
                       <option key={en.id} value={en.id}>
-                        {en.email} — {en.institution} ({en.entryType === 'api_access_request' ? 'API Request' : en.decision})
+                        {en.email} — {en.institution} (
+                        {en.entryType === 'api_access_request' ? 'API Request' : en.decision})
                       </option>
                     ))}
                   </select>
@@ -1024,7 +1241,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                  To (Recipient Email)
+                  To (Submitted User Email)
                 </label>
                 <input
                   type="email"
@@ -1043,7 +1260,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="VanguardRail Sandbox API Keys"
+                  placeholder="Follow-Up: VanguardRail Sandbox API Keys"
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
                   className="w-full min-h-[44px] px-4 py-2.5 text-sm bg-[#FAF8F5] dark:bg-[#18181C] border border-neutral-300 dark:border-neutral-700 rounded-xl text-[#0A0A0A] dark:text-white focus:outline-none focus:border-[#FF5500]"
@@ -1088,22 +1305,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <button
                   type="submit"
+                  disabled={sendingEmail}
                   className="min-h-[46px] px-6 py-3 bg-[#FF5500] hover:bg-[#EA580C] text-white text-xs font-bold rounded-xl inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  Send & Log Email Response
+                  {sendingEmail ? 'Sending...' : 'Send & Log Follow-Up Email'}
                 </button>
 
                 {recipientEmail && (
-                  <a
-                    href={`mailto:${encodeURIComponent(recipientEmail)}?subject=${encodeURIComponent(
-                      emailSubject
-                    )}&body=${encodeURIComponent(emailBody)}`}
-                    className="min-h-[46px] px-4 py-3 bg-neutral-100 dark:bg-[#18181C] hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#0A0A0A] dark:text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open in Default Mail App
-                  </a>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                        recipientEmail
+                      )}&su=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(
+                        emailBody
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[46px] px-4 py-3 bg-neutral-100 dark:bg-[#18181C] hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#0A0A0A] dark:text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Send via Gmail Web
+                    </a>
+
+                    <a
+                      href={`mailto:${encodeURIComponent(recipientEmail)}?subject=${encodeURIComponent(
+                        emailSubject
+                      )}&body=${encodeURIComponent(emailBody)}`}
+                      className="min-h-[46px] px-4 py-3 bg-neutral-100 dark:bg-[#18181C] hover:bg-neutral-200 dark:hover:bg-neutral-800 text-[#0A0A0A] dark:text-white text-xs font-semibold rounded-xl inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      Open Mail App
+                    </a>
+                  </div>
                 )}
               </div>
             </form>
@@ -1116,10 +1350,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {outboundEmails.length === 0 ? (
               <div className="p-12 text-center space-y-2">
                 <div className="text-sm font-bold text-[#0A0A0A] dark:text-white">
-                  No outbound emails sent yet
+                  No follow-up emails sent yet
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Click "Respond" on any entry row or use the "Respond via Email" tab to dispatch messages.
+                  Click "Send Follow-Up" on any API request row to send and log a follow-up email.
                 </p>
               </div>
             ) : (
