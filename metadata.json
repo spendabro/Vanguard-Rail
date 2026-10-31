@@ -1,0 +1,6 @@
+{
+  "name": "VanguardRail — Real-Time APP Fraud Intervention Platform",
+  "description": "Real-time Authorized Push Payment (APP) and social-engineering fraud detection, context-aware customer intervention, and consortium mule intelligence API for banks and fintechs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

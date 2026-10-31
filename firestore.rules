@@ -1,0 +1,243 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Founder-only zero-lookup check safe for list queries (Pillar 8 Cost-Optimization Clause)
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'ajanakuayomide0@gmail.com';
+    }
+
+    // Full founder/admin check for single-document operations
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Validation Blueprint: AdminEntry
+    function isValidAdminEntry(data) {
+      return data.keys().hasAll([
+        'entryType',
+        'email',
+        'institution',
+        'scenarioName',
+        'amountUsd',
+        'riskScore',
+        'decision',
+        'status',
+        'notes',
+        'authorUid',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'entryType',
+        'email',
+        'institution',
+        'scenarioName',
+        'amountUsd',
+        'riskScore',
+        'decision',
+        'status',
+        'notes',
+        'authorUid',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.entryType is string &&
+      data.entryType.size() <= 40 &&
+      (data.entryType == 'api_access_request' || data.entryType == 'fraud_simulation') &&
+      data.email is string &&
+      data.email.size() >= 3 &&
+      data.email.size() <= 160 &&
+      data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$') &&
+      data.institution is string &&
+      data.institution.size() >= 1 &&
+      data.institution.size() <= 120 &&
+      data.scenarioName is string &&
+      data.scenarioName.size() >= 1 &&
+      data.scenarioName.size() <= 120 &&
+      data.amountUsd is number &&
+      data.amountUsd >= 0 &&
+      data.amountUsd <= 100000000 &&
+      data.riskScore is number &&
+      data.riskScore >= 0 &&
+      data.riskScore <= 100 &&
+      data.decision is string &&
+      data.decision.size() <= 20 &&
+      (data.decision == 'APPROVE' || data.decision == 'WARN' || data.decision == 'HOLD' || data.decision == 'DECLINE') &&
+      data.status is string &&
+      data.status.size() <= 20 &&
+      (data.status == 'new' || data.status == 'reviewed' || data.status == 'replied' || data.status == 'archived') &&
+      data.notes is string &&
+      data.notes.size() <= 500 &&
+      data.authorUid is string &&
+      data.authorUid.size() >= 1 &&
+      data.authorUid.size() <= 128 &&
+      data.authorUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: OutboundEmail
+    function isValidOutboundEmail(data) {
+      return data.keys().hasAll([
+        'recipientEmail',
+        'subject',
+        'body',
+        'templateType',
+        'relatedEntryId',
+        'deliveryStatus',
+        'sentByUid',
+        'sentByEmail',
+        'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'recipientEmail',
+        'subject',
+        'body',
+        'templateType',
+        'relatedEntryId',
+        'deliveryStatus',
+        'sentByUid',
+        'sentByEmail',
+        'createdAt'
+      ]) &&
+      data.recipientEmail is string &&
+      data.recipientEmail.size() >= 3 &&
+      data.recipientEmail.size() <= 160 &&
+      data.recipientEmail.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$') &&
+      data.subject is string &&
+      data.subject.size() >= 1 &&
+      data.subject.size() <= 200 &&
+      data.body is string &&
+      data.body.size() >= 1 &&
+      data.body.size() <= 3000 &&
+      data.templateType is string &&
+      data.templateType.size() <= 40 &&
+      (data.templateType == 'sandbox_credentials' || data.templateType == 'fraud_alert_followup' || data.templateType == 'custom_message') &&
+      data.relatedEntryId is string &&
+      data.relatedEntryId.size() >= 1 &&
+      data.relatedEntryId.size() <= 128 &&
+      data.relatedEntryId.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.deliveryStatus is string &&
+      data.deliveryStatus.size() <= 20 &&
+      (data.deliveryStatus == 'sent' || data.deliveryStatus == 'delivered') &&
+      data.sentByUid is string &&
+      data.sentByUid.size() >= 1 &&
+      data.sentByUid.size() <= 128 &&
+      data.sentByUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.sentByEmail is string &&
+      data.sentByEmail.size() >= 3 &&
+      data.sentByEmail.size() <= 160 &&
+      data.createdAt is timestamp;
+    }
+
+    // Validation Blueprint: AdminProfile
+    function isValidAdminProfile(data) {
+      return data.keys().hasAll(['email', 'role', 'createdAt']) &&
+      data.keys().hasOnly(['email', 'role', 'createdAt']) &&
+      data.email is string &&
+      data.email.size() >= 3 &&
+      data.email.size() <= 160 &&
+      data.role is string &&
+      data.role.size() <= 20 &&
+      data.role == 'admin' &&
+      data.createdAt is timestamp;
+    }
+
+    // Collection: /entries/{entryId} — Overseen exclusively by Founder/Admin
+    match /entries/{entryId} {
+      allow get: if isAdmin() && isValidId(entryId);
+
+      allow list: if isBootstrappedAdmin() && existing().authorUid is string;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(entryId) &&
+        isValidAdminEntry(incoming()) &&
+        incoming().authorUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(entryId) &&
+        isValidAdminEntry(incoming()) &&
+        incoming().authorUid == existing().authorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'decision', 'riskScore', 'updatedAt']);
+
+      allow delete: if isAdmin() && isValidId(entryId);
+    }
+
+    // Collection: /outbound_emails/{emailId} — Founder/Admin Outbox
+    match /outbound_emails/{emailId} {
+      allow get: if isAdmin() && isValidId(emailId);
+
+      allow list: if isBootstrappedAdmin() && existing().sentByUid is string;
+
+      allow create: if isAdmin() &&
+        isValidId(emailId) &&
+        isValidOutboundEmail(incoming()) &&
+        incoming().sentByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/entries/$(incoming().relatedEntryId));
+
+      allow update: if isAdmin() &&
+        isValidId(emailId) &&
+        isValidOutboundEmail(incoming()) &&
+        incoming().sentByUid == existing().sentByUid &&
+        incoming().relatedEntryId == existing().relatedEntryId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['deliveryStatus']);
+
+      allow delete: if isAdmin() && isValidId(emailId);
+    }
+
+    // Collection: /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isAdmin() && isValidId(adminId);
+
+      allow list: if isBootstrappedAdmin() && existing().role == 'admin';
+
+      allow create: if isAdmin() &&
+        isValidId(adminId) &&
+        isValidAdminProfile(incoming()) &&
+        incoming().createdAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(adminId) &&
+        isValidAdminProfile(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email']);
+
+      allow delete: if isAdmin() && isValidId(adminId);
+    }
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "entities": {
+    "AdminEntry": {
+      "title": "AdminEntry",
+      "description": "Represents an API access lead request or a logged fraud simulation entry overseen in the Admin Dashboard.",
+      "type": "object",
+      "properties": {
+        "entryType": {
+          "type": "string",
+          "description": "Category of the entry.",
+          "enum": ["api_access_request", "fraud_simulation"],
+          "maxLength": 40
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Contact email address associated with the entry.",
+          "minLength": 3,
+          "maxLength": 160,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        },
+        "institution": {
+          "type": "string",
+          "description": "Financial institution or organization name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "scenarioName": {
+          "type": "string",
+          "description": "Scenario or rail requested/simulated.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "amountUsd": {
+          "type": "number",
+          "description": "Simulated or target transaction amount in USD."
+        },
+        "riskScore": {
+          "type": "number",
+          "description": "Calculated APP risk score (0 to 100)."
+        },
+        "decision": {
+          "type": "string",
+          "description": "Engine decision.",
+          "enum": ["APPROVE", "WARN", "HOLD", "DECLINE"],
+          "maxLength": 20
+        },
+        "status": {
+          "type": "string",
+          "description": "Admin workflow status.",
+          "enum": ["new", "reviewed", "replied", "archived"],
+          "maxLength": 20
+        },
+        "notes": {
+          "type": "string",
+          "description": "Admin review notes or summary.",
+          "maxLength": 500
+        },
+        "authorUid": {
+          "type": "string",
+          "description": "UID of the user who submitted or logged the entry.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp."
+        }
+      },
+      "required": [
+        "entryType",
+        "email",
+        "institution",
+        "scenarioName",
+        "amountUsd",
+        "riskScore",
+        "decision",
+        "status",
+        "notes",
+        "authorUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "OutboundEmail": {
+      "title": "OutboundEmail",
+      "description": "Represents an outbound email dispatched by an administrator from the Admin Dashboard.",
+      "type": "object",
+      "properties": {
+        "recipientEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Recipient email address.",
+          "minLength": 3,
+          "maxLength": 160,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Email subject line.",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "body": {
+          "type": "string",
+          "description": "Email body content.",
+          "minLength": 1,
+          "maxLength": 3000
+        },
+        "templateType": {
+          "type": "string",
+          "description": "Template category used for the outbound message.",
+          "enum": ["sandbox_credentials", "fraud_alert_followup", "custom_message"],
+          "maxLength": 40
+        },
+        "relatedEntryId": {
+          "type": "string",
+          "description": "ID of the related AdminEntry record.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "deliveryStatus": {
+          "type": "string",
+          "description": "Delivery status of the email.",
+          "enum": ["sent", "delivered"],
+          "maxLength": 20
+        },
+        "sentByUid": {
+          "type": "string",
+          "description": "UID of the administrator who sent the email.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sentByEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Email of the administrator who sent the email.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the email was sent."
+        }
+      },
+      "required": [
+        "recipientEmail",
+        "subject",
+        "body",
+        "templateType",
+        "relatedEntryId",
+        "deliveryStatus",
+        "sentByUid",
+        "sentByEmail",
+        "createdAt"
+      ]
+    },
+    "AdminProfile": {
+      "title": "AdminProfile",
+      "description": "Trusted administrator membership document.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Administrator email address.",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "role": {
+          "type": "string",
+          "description": "Role designation.",
+          "enum": ["admin"],
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin record was created."
+        }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/entries/{entryId}": {
+      "schema": { "$ref": "#/entities/AdminEntry" },
+      "description": "Stores all API access requests and logged fraud simulation entries overseen by admins."
+    },
+    "/outbound_emails/{emailId}": {
+      "schema": { "$ref": "#/entities/OutboundEmail" },
+      "description": "Stores outbound emails sent from the Admin Dashboard to leads and institutions."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminProfile" },
+      "description": "Stores trusted administrator UIDs."
+    }
+  }
+}

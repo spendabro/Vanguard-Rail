@@ -1,0 +1,82 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: #0A0A0A;
+    background-color: #FFFFFF;
+    overflow-x: hidden;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .dark body {
+    color: #FAFAFA;
+    background-color: #09090B;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.text-gradient-orange-black {
+  background: linear-gradient(105deg, #0A0A0A 0%, #1F1F1F 32%, #C2410C 68%, #FF5500 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .text-gradient-orange-black {
+  background: linear-gradient(105deg, #FFFFFF 0%, #E5E5E5 30%, #FB923C 68%, #FF5500 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-solar {
+  background: linear-gradient(95deg, #EA580C 0%, #FF5500 55%, #0A0A0A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .text-gradient-solar {
+  background: linear-gradient(95deg, #FF7A00 0%, #FF5500 55%, #FFFFFF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.bg-solar-mesh {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(255, 85, 0, 0.12) 0%, rgba(255, 136, 0, 0.04) 38%, transparent 68%),
+    radial-gradient(circle at 12% 85%, rgba(10, 10, 10, 0.04) 0%, transparent 55%),
+    linear-gradient(180deg, #FFFFFF 0%, #FAF8F5 100%);
+}
+
+.dark .bg-solar-mesh {
+  background:
+    radial-gradient(circle at 88% 12%, rgba(255, 85, 0, 0.18) 0%, rgba(255, 122, 0, 0.06) 40%, transparent 70%),
+    radial-gradient(circle at 12% 85%, rgba(255, 85, 0, 0.05) 0%, transparent 55%),
+    linear-gradient(180deg, #09090B 0%, #121215 100%);
+}
+
+.bg-orange-black-banner {
+  background: linear-gradient(135deg, #0A0A0A 0%, #181310 52%, #7C2D12 84%, #EA580C 100%);
+}
