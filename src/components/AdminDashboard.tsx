@@ -80,15 +80,15 @@ const EMAIL_TEMPLATES: Record<
 > = {
   sandbox_credentials: (entry) => ({
     subject: `Follow-Up: VanguardRail Sandbox API Keys for ${entry?.institution || 'Your Team'}`,
-    body: `Hello ${entry?.email || 'Fraud & Payments Team'},\n\nThank you for submitting your API access request on VanguardRail.\n\nAs Founder of VanguardRail, I have provisioned your sandbox credentials for ${entry?.institution || 'your institution'} (${entry?.scenarioName || 'Instant Payment Rail'}):\n\n• Endpoint: POST https://api.vanguardrail.io/v1/payments/score\n• Sandbox Key: vr_live_sbx_${(entry?.id || '99281').slice(-6)}\n• SLA Target: p99 < 38ms with 60ms hard circuit-breaker\n• Consortium Mode: Zero-PII HMAC-SHA256 Velocity Graph\n\nPlease reply directly to this email with your preferred time if you would like a 15-minute live integration walkthrough.\n\nBest regards,\nFounder, VanguardRail\n${FOUNDER_EMAIL}`,
+    body: `Hello ${entry?.email || 'Fraud & Payments Team'},\n\nThank you for submitting your API access request on VanguardRail.\n\nWe have provisioned your sandbox credentials for ${entry?.institution || 'your institution'} (${entry?.scenarioName || 'Instant Payment Rail'}):\n\n• Endpoint: POST https://api.vanguardrail.io/v1/payments/score\n• Sandbox Key: vr_live_sbx_${(entry?.id || '99281').slice(-6)}\n• SLA Target: p99 < 38ms with 60ms hard circuit-breaker\n• Consortium Mode: Zero-PII HMAC-SHA256 Velocity Graph\n\nPlease reply directly to this email with your preferred time if you would like a 15-minute live integration walkthrough.\n\nBest regards,\nVanguardRail API Provisioning Team\nsecurity@vanguardrail.io`,
   }),
   fraud_alert_followup: (entry) => ({
     subject: `Follow-Up: APP Risk Assessment (${entry?.decision || 'HOLD'} · ${entry?.riskScore ?? 88}/100) — ${entry?.institution || 'Institution'}`,
-    body: `Hello ${entry?.email || 'Risk Analyst'},\n\nFollowing up on the payment entry recorded for ${entry?.institution || 'your institution'}:\n\n• Scenario: ${entry?.scenarioName || 'Authorized Push Payment'}\n• Simulated Amount: $${(entry?.amountUsd ?? 24500).toLocaleString()}\n• VanguardRail Decision: ${entry?.decision || 'HOLD'} (Score: ${entry?.riskScore ?? 88}/100)\n• Summary: ${entry?.notes || 'Flagged for active call + screen-share coercion telemetry.'}\n\nLet me know if you need custom threshold tuning for your fraud operations team.\n\nBest regards,\nFounder, VanguardRail\n${FOUNDER_EMAIL}`,
+    body: `Hello ${entry?.email || 'Risk Analyst'},\n\nFollowing up on the payment entry recorded for ${entry?.institution || 'your institution'}:\n\n• Scenario: ${entry?.scenarioName || 'Authorized Push Payment'}\n• Simulated Amount: $${(entry?.amountUsd ?? 24500).toLocaleString()}\n• VanguardRail Decision: ${entry?.decision || 'HOLD'} (Score: ${entry?.riskScore ?? 88}/100)\n• Summary: ${entry?.notes || 'Flagged for active call + screen-share coercion telemetry.'}\n\nLet us know if you need custom threshold tuning for your fraud operations team.\n\nBest regards,\nVanguardRail Risk Operations\nsecurity@vanguardrail.io`,
   }),
   custom_message: (entry) => ({
     subject: `Following up on your VanguardRail API request (${entry?.institution || 'Partner'})`,
-    body: `Hello ${entry?.email || ''},\n\nI saw your API access request for ${entry?.institution || 'your organization'} and wanted to follow up personally.\n\nHow can we best support your real-time APP fraud prevention roadmap this quarter?\n\nBest regards,\nFounder, VanguardRail\n${FOUNDER_EMAIL}`,
+    body: `Hello ${entry?.email || ''},\n\nWe received your API access request for ${entry?.institution || 'your organization'} and wanted to follow up directly.\n\nHow can we best support your real-time APP fraud prevention roadmap this quarter?\n\nBest regards,\nVanguardRail Executive Team\nsecurity@vanguardrail.io`,
   }),
 };
 
@@ -234,7 +234,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (cred.user.email?.toLowerCase() !== FOUNDER_EMAIL.toLowerCase()) {
         await signOut(auth);
         setAuthError(
-          `Access Restricted: This console is private to the Founder (${FOUNDER_EMAIL}).`
+          'Access Restricted: The selected account does not have administrative clearance for this workspace.'
         );
       }
     } catch (err) {
@@ -481,7 +481,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return matchesType && matchesSearch;
   });
 
-  // Strict Founder Gate
+  // Strict Founder Gate (Zero public exposure of admin email)
   if (!currentUser || !isFounder) {
     return (
       <section className="py-20 bg-[#FAF8F5] dark:bg-[#09090B] min-h-[80vh] flex items-center justify-center px-4">
@@ -491,10 +491,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div>
             <h1 className="text-2xl font-extrabold text-[#0A0A0A] dark:text-white mb-2">
-              Private Founder Console
+              VanguardRail Internal Console
             </h1>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed">
-              This console is strictly restricted to the Founder & Owner of VanguardRail ({FOUNDER_EMAIL}) to oversee institutional entries and send follow-up emails to API request leads.
+              Restricted internal command workspace for overseeing institutional API requests, sandbox telemetry, and outbound follow-up communications.
             </p>
           </div>
 
@@ -506,7 +506,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {currentUser && !isFounder && (
             <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300">
-              Signed in as <span className="font-mono">{currentUser.email}</span> (Unauthorized). Please sign in with the Founder account.
+              The current session does not have administrative clearance. Please authenticate with an authorized administrator account.
             </div>
           )}
 
@@ -515,7 +515,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={handleFounderSignIn}
             className="min-h-[48px] w-full py-3 px-6 bg-[#0A0A0A] dark:bg-[#FF5500] hover:bg-[#FF5500] dark:hover:bg-[#EA580C] text-white text-sm font-bold rounded-xl transition-colors cursor-pointer"
           >
-            Authenticate as Founder
+            Sign In with Authorized Account
           </button>
           <button
             type="button"
@@ -532,18 +532,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   return (
     <section className="py-10 sm:py-14 bg-[#FAF8F5] dark:bg-[#09090B] min-h-[85vh] transition-colors">
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 space-y-8">
-        {/* Top Founder Header */}
+        {/* Top Internal Header */}
         <div className="bg-white dark:bg-[#121215] rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 mb-1">
               <span className="font-semibold text-[#C2410C] dark:text-[#FF7A00]">
-                Founder Command & Email Dispatch Center
+                Internal Command & Email Dispatch Center
               </span>
               <span aria-hidden="true">·</span>
-              <span className="font-mono">{currentUser.email}</span>
+              <span className="font-mono">Verified Executive Session</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0A0A0A] dark:text-white">
-              VanguardRail <span className="text-gradient-orange-black">Founder Console</span>
+              VanguardRail <span className="text-gradient-orange-black">Command Console</span>
             </h1>
           </div>
 
@@ -1370,7 +1370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </span>
                     </div>
                     <span className="text-neutral-400 font-mono">
-                      From: {mail.sentByEmail}
+                      Dispatched via VanguardRail Console
                     </span>
                   </div>
                   <div className="text-sm font-bold text-[#0A0A0A] dark:text-white">

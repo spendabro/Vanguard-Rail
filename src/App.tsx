@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, CheckCircle2, Sun, Moon, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Sun, Moon, ShieldCheck } from 'lucide-react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { InteractiveWorkbench } from './components/InteractiveWorkbench';
@@ -16,24 +16,27 @@ const HERO_IMG = '/src/assets/images/hero_payment_security_1793364626590.jpg';
 const CASE_NEOBANK_IMG = '/src/assets/images/case_study_neobank_1793364627995.jpg';
 const CASE_CONSORTIUM_IMG = '/src/assets/images/case_study_consortium_1793364629239.jpg';
 
+function checkIsAdminRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  const secretParam = params.get('secret')?.toLowerCase();
+  const portalParam = params.get('portal')?.toLowerCase();
+  const hash = window.location.hash.toLowerCase();
+  const path = window.location.pathname.toLowerCase();
+
+  return (
+    secretParam === 'admin' ||
+    portalParam === 'admin' ||
+    params.has('admin') ||
+    hash === '#admin' ||
+    path.endsWith('/admin')
+  );
+}
+
 export default function App() {
-  const [viewMode, setViewMode] = useState<'landing' | 'admin'>(() => {
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash.toLowerCase();
-      const path = window.location.pathname.toLowerCase();
-      const search = window.location.search.toLowerCase();
-      if (
-        hash === '#admin' ||
-        hash === '#founder' ||
-        path.endsWith('/admin') ||
-        path.endsWith('/founder') ||
-        search.includes('admin')
-      ) {
-        return 'admin';
-      }
-    }
-    return 'landing';
-  });
+  const [viewMode, setViewMode] = useState<'landing' | 'admin'>(() =>
+    checkIsAdminRoute() ? 'admin' : 'landing'
+  );
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
 
@@ -73,20 +76,32 @@ export default function App() {
     currentUser.emailVerified &&
     currentUser.email?.toLowerCase() === FOUNDER_EMAIL.toLowerCase();
 
+  const openAdminRoute = () => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('secret', 'admin');
+      window.history.pushState({}, '', url.toString());
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setViewMode('admin');
+  };
+
+  const exitAdminRoute = () => {
+    if (typeof window !== 'undefined') {
+      const cleanPath = window.location.pathname.replace(/\/admin$/i, '') || '/';
+      window.history.pushState({}, '', cleanPath);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setViewMode('landing');
+  };
+
   useEffect(() => {
     const syncUrlToMode = () => {
-      const hash = window.location.hash.toLowerCase();
-      const path = window.location.pathname.toLowerCase();
-      const search = window.location.search.toLowerCase();
-      if (
-        hash === '#admin' ||
-        hash === '#founder' ||
-        path.endsWith('/admin') ||
-        path.endsWith('/founder') ||
-        search.includes('admin')
-      ) {
+      if (checkIsAdminRoute()) {
         setViewMode('admin');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setViewMode('landing');
       }
     };
     window.addEventListener('hashchange', syncUrlToMode);
@@ -96,17 +111,6 @@ export default function App() {
       window.removeEventListener('popstate', syncUrlToMode);
     };
   }, []);
-
-  const toggleFounderPortal = () => {
-    setViewMode((prev) => {
-      const next = prev === 'admin' ? 'landing' : 'admin';
-      if (typeof window !== 'undefined') {
-        window.location.hash = next === 'admin' ? 'admin' : '';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-      return next;
-    });
-  };
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
@@ -193,20 +197,20 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#09090B] text-[#0A0A0A] dark:text-[#FAFAFA] flex flex-col transition-colors">
-      {/* PRIVATE FOUNDER BAR — Visible ONLY when authenticated as the Founder (ajanakuayomide0@gmail.com) */}
+      {/* PRIVATE EXECUTIVE BAR — Visible ONLY after authenticating as Founder */}
       {isFounder && (
         <div className="bg-[#0A0A0A] dark:bg-[#18181C] text-white border-b border-neutral-800 px-4 sm:px-6 py-2 text-xs">
           <div className="max-w-[1160px] mx-auto flex items-center justify-between gap-4">
             <span className="flex items-center gap-2 font-mono text-orange-300 truncate">
               <ShieldCheck className="w-3.5 h-3.5 text-[#FF5500] shrink-0" />
-              Founder Authenticated ({currentUser?.email})
+              VanguardRail Internal Console · Active Session
             </span>
             <button
               type="button"
-              onClick={toggleFounderPortal}
+              onClick={() => (viewMode === 'admin' ? exitAdminRoute() : openAdminRoute())}
               className="px-3 py-1 rounded-md bg-[#FF5500] hover:bg-[#EA580C] text-white font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              {viewMode === 'admin' ? 'Return to Public Site' : 'Open Founder Console'}
+              {viewMode === 'admin' ? 'Return to Public Site' : 'Open Command Console'}
             </button>
           </div>
         </div>
@@ -220,7 +224,11 @@ export default function App() {
             href="#"
             onClick={(e) => {
               e.preventDefault();
-              setViewMode('landing');
+              if (viewMode !== 'landing') {
+                exitAdminRoute();
+              } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
             }}
             className="text-lg sm:text-xl font-extrabold tracking-tight text-[#0A0A0A] dark:text-white whitespace-nowrap shrink-0 font-display"
           >
@@ -335,7 +343,7 @@ export default function App() {
           <AdminDashboard
             currentUser={currentUser}
             isAuthReady={isAuthReady}
-            onBackToSite={() => setViewMode('landing')}
+            onBackToSite={exitAdminRoute}
           />
         ) : (
           <>
@@ -706,16 +714,6 @@ export default function App() {
             </button>
 
             <span>© {new Date().getFullYear()} VanguardRail Inc.</span>
-
-            {/* Founder-Only Portal Trigger (Protected by Google Auth for ajanakuayomide0@gmail.com) */}
-            <button
-              type="button"
-              onClick={toggleFounderPortal}
-              className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:border-[#FF5500] text-[#0A0A0A] dark:text-neutral-200 font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Lock className="w-3.5 h-3.5 text-[#FF5500]" />
-              {viewMode === 'admin' ? 'Exit Founder Portal' : 'Founder Portal'}
-            </button>
           </div>
         </div>
       </footer>
